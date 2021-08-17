@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
+use App\Helper\Helper;
 
 class CheckRateLimitedSubscription extends Command
 {
@@ -40,29 +41,14 @@ class CheckRateLimitedSubscription extends Command
      *
      * @return int
      */
-    public function handle()
+    public function handle(RateLimitedSubscription $subscription)
     {
-        RateLimitedSubscription::with([
-            'subscription' => function($query){
-            $query->select('id','device_id','receipt','status');
-        }])->with(['subscription.device' => function($query){
-            $query->select('id', 'os');
-        }])->chunkById(3000, function ($rateLimitedSubscriptions) {
+        $subscription->withSubscriptionAndDevice()->chunkById(3000, function ($rateLimitedSubscriptions) {
             $cancelSubscriptionIds = [];
             $removeRateLimitedSubscriptionIds = [];
             foreach ($rateLimitedSubscriptions as $rateLimitedSubscription) {
                 $subscription = $rateLimitedSubscription->subscription;
-                if (strtoupper($subscription->device->os) == 'IOS') {
-                    $apiResponse = Http::withHeaders([
-                        'username' => 'someUserName',
-                        'password' => '1234'
-                    ])->post(URL::to('/api/ios'), ['receipt' => $subscription->receipt]);
-                } else {
-                    $apiResponse = Http::withHeaders([
-                        'username' => 'someUserName',
-                        'password' => '1234'
-                    ])->post(URL::to('/api/google'), ['receipt' => $subscription->receipt]);
-                }
+                $apiResponse = Helper::apiHttpRequest($subscription->receipt, $subscription->device->os);
                 if (!$apiResponse['status']) { 
                     array_push($cancelSubscriptionIds, $subscription->id);
                     array_push($removeRateLimitedSubscriptionIds, $rateLimitedSubscription->id);

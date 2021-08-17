@@ -8,11 +8,9 @@ use Illuminate\Http\Request;
 
 class CheckSubscriptionController extends Controller
 {
-    public function checkSubscription(Request $request){
-        $validated = $request->validate([
-            'client_token' => 'required'
-        ]);
-        $device = Device::where('client_token', $validated['client_token'])->first();
+    public function checkSubscription(Request $request, Device $device){
+        $validated = $request->validated();
+        $device->getDeviceFromClientToken($validated['client_token']);
         if(!$device){
             return 'Unregistered Device!';
         }

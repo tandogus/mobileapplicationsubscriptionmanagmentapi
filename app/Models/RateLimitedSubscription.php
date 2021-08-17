@@ -22,4 +22,12 @@ class RateLimitedSubscription extends Model
         return $this->belongsTo(Subscription::class);
     }
   
+    public function withSubscriptionAndDevice(){
+        return  $this->with([
+            'subscription' => function($query){
+            $query->select('id','device_id','receipt','status');
+        }])->with(['subscription.device' => function($query){
+            $query->select('id', 'os');
+        }]);
+    }
 }

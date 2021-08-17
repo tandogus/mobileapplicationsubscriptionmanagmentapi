@@ -5,9 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Subscription;
 use App\Models\RateLimitedSubscription;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\URL;
+use App\Helper\Helper;
 
 class CheckExpiryDate extends Command
 {
@@ -40,34 +38,18 @@ class CheckExpiryDate extends Command
      *
      * @return int
      */
-    public function handle()
+    public function handle(Subscription $subscription)
     {
-        Subscription::with(['device' => function ($query){
-            $query->select('id', 'os');
-        }])
-        ->where('status', '!=', 'canceled')
-        ->where('expiry_date', '<=', Carbon::now()->addYear()->format('Y-m-d\ H:i:s'))
-        ->select('id','device_id','receipt','status')
-        ->orderBy('id')
+        $subscription->expiredButNotCanceledWithDevice()
         ->chunkById(3000, function ($activeSubscriptions) {
             $cancelSubscriptionIds = [];
             $rateLimitedSubscriptionIds = [];
             foreach ($activeSubscriptions as $activeSubscription) {
-                if (strtoupper($activeSubscription->device->os) == 'IOS') {
-                    $apiResponse = Http::withHeaders([
-                        'username' => 'someUserName',
-                        'password' => '1234'
-                    ])->post(URL::to('/api/ios'), ['receipt' => $activeSubscription->receipt]);
-                } else {
-                    $apiResponse = Http::withHeaders([
-                        'username' => 'someUserName',
-                        'password' => '1234'
-                    ])->post(URL::to('/api/google'), ['receipt' => $activeSubscription->receipt]);
-                }
-                if (!$apiResponse['status']) { 
-                    array_push($cancelSubscriptionIds, $activeSubscription->id);
-                }else if($apiResponse['http-status-code'] == 429){
+                $apiResponse = Helper::apiHttpRequest($activeSubscription->receipt, $activeSubscription->device->os);
+                if($apiResponse['http-status-code'] == 429){
                     array_push($rateLimitedSubscriptionIds, ['subscription_id' => $activeSubscription->id]);
+                }else if (!$apiResponse['status']) { 
+                    array_push($cancelSubscriptionIds, $activeSubscription->id);
                 }
             }
             Subscription::whereIn('id', $cancelSubscriptionIds)->update(['status' => 'canceled']);
